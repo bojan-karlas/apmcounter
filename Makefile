@@ -2,7 +2,7 @@
 
 pack:
 	mkdir -p pkg/
-	zip -r pkg/apmcounter@bojan.ninja.zip src/
+	cd src;	zip -r ../pkg/apmcounter@bojan.ninja.zip ./*
 
 clean:
 	rm -rf pkg/
