@@ -1,17 +1,13 @@
 
 const St = imports.gi.St;
+const ExtensionUtils = imports.misc.extensionUtils;
+const Me = ExtensionUtils.getCurrentExtension();
 const Main = imports.ui.main;
-const Tweener = imports.ui.tweener;
 const Clutter = imports.gi.Clutter;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const Lang = imports.lang;
 const Mainloop = imports.mainloop;
-
-let text, button, statusLabel;
-
-const window_size = 10;
-let window = Array.apply(null, {length: window_size}).map(x => 0);
 
 async function execCommand(argv, cancellable=null) {
     try {
@@ -51,89 +47,76 @@ async function execCommand(argv, cancellable=null) {
     }
 }
 
-function _hideHello() {
-    Main.uiGroup.remove_actor(text);
-    text = null;
-}
+class Extension {
 
-function _showHello() {
-    if (!text) {
-        text = new St.Label({ style_class: 'helloworld-label', text: statusLabel.text });
-        Main.uiGroup.add_actor(text);
+    constructor() {
+        this._indicator = null;
+        this._statusLabel = null;
+        this._WINDOW_SIZE = 10;
+        this._window = Array.apply(null, {length: this._WINDOW_SIZE}).map(x => 0);
     }
 
-    text.opacity = 255;
+    enable() {
+        log(`enabling ${Me.metadata.name}`);
 
-    let monitor = Main.layoutManager.primaryMonitor;
-
-    text.set_position(monitor.x + Math.floor(monitor.width / 2 - text.width / 2),
-                      monitor.y + Math.floor(monitor.height / 2 - text.height / 2));
-
-    Tweener.addTween(text,
-                     { opacity: 0,
-                       time: 2,
-                       transition: 'easeOutQuad',
-                       onComplete: _hideHello });
-}
-
-let _querySensors = function(){
-
-    const cmd_xinput = "xinput --test-xi2 --root";
-    const cmd_timeout = "timeout 1 cat";
-    const cmd_grep = "grep -Pzo '(RawButtonPress.*\\n.*\\n.*detail: (1|2|3)\\n|RawKeyPress.*\\n.*\\n.*\\n)'";
-    const cmd_wc = "wc -l";
-    const cmd_all = [cmd_xinput, cmd_timeout, cmd_grep, cmd_wc];
-    let command = cmd_all.join(" | ");
-
-    //let command = "xinput --test-xi2 --root | timeout 1 cat | grep -E \"RawButtonPress|RawKeyPress\" | wc -l";
-    let full_command = ["/bin/bash", "-c", command];
-
-    execCommand(full_command).then(stdout => {
-        let num = Number(stdout.split('\n')[0]) / 3;
-        window.shift();
-        window.push(num);
-        let apm = window.reduce((a,b)=>a+b) * 60 / window_size;
-
-        statusLabel.text = "APM: " + String(apm);
-    }).catch(e => {log(e.toString());});
-
-}
-
-function init() {
-
-    log("APM Counter INIT");
-
-    button = new St.Bin({ style_class: 'label-style',
+        this._indicator = new St.Bin({ style_class: 'label-style',
                           reactive: true,
                           can_focus: true,
                           x_fill: true,
                           y_fill: false,
                           track_hover: true });
-    let icon = new St.Icon({ icon_name: 'system-run-symbolic',
-                             style_class: 'system-status-icon' });
-    
-    statusLabel = new St.Label({ text: '00', y_expand: true, y_align: Clutter.ActorAlign.CENTER });
-    //statusLabel.text = "0"
+        this._statusLabel = new St.Label({ text: '00', y_expand: true, y_align: Clutter.ActorAlign.CENTER });
 
-    button.set_child(statusLabel);
-    button.connect('button-press-event', _showHello);
+        this._indicator.set_child(this._statusLabel);
 
-    let cnt = 0;
+        Main.panel._rightBox.insert_child_at_index(this._indicator, 0);
 
-    this._eventLoop = Mainloop.timeout_add(1500, Lang.bind(this, function (){
-        cnt +=1;
-        //statusLabel.text = String(cnt);
+        this._sourceId = GLib.timeout_add_seconds(GLib.PRIORITY_DEFAULT, 1.5, () => {
+            this._querySensors();
+            return GLib.SOURCE_CONTINUE;
+        });
+    }
 
-        _querySensors();
-        // readd to update queue
-        return true;
-    }));
+    disable() {
+        log(`disabling ${Me.metadata.name}`);
+
+        Main.panel._rightBox.remove_child(this._indicator);
+        this._indicator.destroy();
+        this._indicator = null;
+
+        if (this._sourceId) {
+            GLib.Source.remove(this._sourceId);
+            this._sourceId = null;
+        }
+    }
+
+    _querySensors() {
+
+        const cmd_xinput = "xinput --test-xi2 --root";
+        const cmd_timeout = "timeout 1 cat";
+        const cmd_grep = "grep -Pzo '(RawButtonPress.*\\n.*\\n.*detail: (1|2|3)\\n|RawKeyPress.*\\n.*\\n.*\\n)'";
+        const cmd_wc = "wc -l";
+        const cmd_all = [cmd_xinput, cmd_timeout, cmd_grep, cmd_wc];
+        let command = cmd_all.join(" | ");
+
+        //let command = "xinput --test-xi2 --root | timeout 1 cat | grep -E \"RawButtonPress|RawKeyPress\" | wc -l";
+        let full_command = ["/bin/bash", "-c", command];
+
+        execCommand(full_command).then(stdout => {
+            let num = Number(stdout.split('\n')[0]) / 3;
+            this._window.shift();
+            this._window.push(num);
+            let apm = this._window.reduce((a,b)=>a+b) * 60 / this._WINDOW_SIZE;
+
+            this._statusLabel.text = "APM: " + String(apm);
+        }).catch(e => {log(e.toString());});
+    }
 }
 
-function enable() {
-    Main.panel._rightBox.insert_child_at_index(button, 0);
-}
+function init() {
 
-function disable() {
-    Main.panel._rightBox.remove_child(button);
+    log(`initializing ${Me.metadata.name}`);
+
+    return new Extension();
+
 }
