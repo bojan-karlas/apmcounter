@@ -3,6 +3,6 @@
     "description": "Counts the number of actions per minute and displays it in the top bar.",
     "uuid": "apmcounter@bojan.ninja",
     "shell-version": ["3.28.3"],
-    "version": "0.1",
+    "version": "0.2",
     "url": "https://github.com/bojan-karlas/apmcounter"
 }
